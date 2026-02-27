@@ -5,6 +5,7 @@
     streamlit run app.py
 """
 import sys
+import traceback
 from pathlib import Path
 
 import pandas as pd
@@ -398,6 +399,8 @@ elif page == "📰 今日のニュース":
                         )
                     except Exception as e:
                         st.error(f"記事{idx+1} エラー: {e}")
+                        with st.expander("詳細エラー情報"):
+                            st.code(traceback.format_exc())
 
             progress.empty()
             st.cache_data.clear()
@@ -585,6 +588,8 @@ elif page == "✍️ 投稿を生成":
                 st.success("投稿文を生成しました！")
             except Exception as e:
                 st.error(f"生成エラー: {e}")
+                with st.expander("詳細エラー情報"):
+                    st.code(traceback.format_exc())
                 st.stop()
 
     # 生成結果の表示

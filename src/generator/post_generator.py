@@ -119,7 +119,20 @@ def generate_post(
         news_article=news_article,
     )
 
-    client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        raise ValueError(
+            "ANTHROPIC_API_KEY が設定されていません。.env ファイルに正しい API キーを記入してください。"
+        )
+    try:
+        api_key.encode("ascii")
+    except UnicodeEncodeError:
+        raise ValueError(
+            "ANTHROPIC_API_KEY に日本語などの非ASCII文字が含まれています。"
+            ".env ファイルの ANTHROPIC_API_KEY=（既存） を実際の APIキー（sk-ant-api03-...）に書き換えてください。"
+        )
+
+    client = anthropic.Anthropic(api_key=api_key)
     message = client.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=1024,
