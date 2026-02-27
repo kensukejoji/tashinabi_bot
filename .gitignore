@@ -1,0 +1,62 @@
+# 環境変数・シークレット
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.so
+.installed.cfg
+MANIFEST
+
+# 仮想環境
+venv/
+.venv/
+env/
+.env/
+ENV/
+
+# SQLite DB（本番データは含めない）
+db/*.db
+db/*.sqlite
+db/*.sqlite3
+
+# Streamlit
+.streamlit/secrets.toml
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ログ
+*.log
+logs/
+
+# pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.claude/
