@@ -2,10 +2,11 @@
 画像URL解決モジュール
 
 優先順位:
-  1. 商品の image_url
-  2. YouTube サムネイル
-  3. ニュース記事の OGP 画像
-  4. Gemini (Nano Banana) で AI 生成 → Telegraph にアップ
+  1. 商品の image_url（DB保存済み）
+  2. Amazon商品ページから自動スクレイピング（affiliate_url がある場合）
+  3. YouTube サムネイル
+  4. ニュース記事の OGP 画像
+  5. Gemini (Nano Banana) で AI 生成 → Telegraph にアップ
 """
 import os
 import re
@@ -20,6 +21,7 @@ load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "../../.env"), o
 
 def resolve_image_url(
     product_image_url: Optional[str] = None,
+    product_affiliate_url: Optional[str] = None,
     youtube_url: Optional[str] = None,
     news_url: Optional[str] = None,
     keywords: Optional[str] = None,
@@ -27,6 +29,13 @@ def resolve_image_url(
     """優先順位順に画像URLを解決して返す"""
     if product_image_url:
         return product_image_url
+
+    # Amazonアフィリエイトリンクから商品画像を自動取得
+    if product_affiliate_url:
+        from .amazon_image_fetcher import fetch_image_url
+        img = fetch_image_url(product_affiliate_url)
+        if img:
+            return img
 
     if youtube_url:
         thumbnail = _youtube_thumbnail(youtube_url)

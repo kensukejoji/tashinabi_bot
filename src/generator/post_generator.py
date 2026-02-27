@@ -166,7 +166,11 @@ def generate_post(
     # 商品とのマッチング
     all_products = repository.list_products(category=category_filter)
     suggested_category = data.get("suggested_category", "")
-    matched_product = _find_matching_product(suggested_category, all_products)
+    # カテゴリ絞り込みが指定されている場合はそのリストから直接選ぶ
+    if category_filter and all_products:
+        matched_product = random.choice(all_products)
+    else:
+        matched_product = _find_matching_product(suggested_category, all_products)
 
     result = GeneratedPost(
         pattern=data["pattern"],
