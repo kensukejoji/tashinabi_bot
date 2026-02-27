@@ -7,6 +7,7 @@
 import sys
 import traceback
 from pathlib import Path
+from typing import Optional
 
 from dotenv import load_dotenv
 load_dotenv(dotenv_path=Path(__file__).parent / ".env", override=True)
@@ -770,6 +771,8 @@ elif page == "✍️ 投稿を生成":
                             st.success(f"✓ X投稿完了！ tweet_id: {tweet_id}")
                         except Exception as e:
                             st.error(f"X投稿エラー: {e}")
+                            with st.expander("詳細エラー情報（コピー可）"):
+                                st.code(traceback.format_exc())
 
         def _resolve_and_save_image(result) -> Optional[str]:
             """画像URLを解決し、商品に未保存なら即DBに保存する"""
@@ -812,6 +815,8 @@ elif page == "✍️ 投稿を生成":
                             st.warning(str(e))
                         except Exception as e:
                             st.error(f"Instagram投稿エラー: {e}")
+                            with st.expander("詳細エラー情報（コピー可）"):
+                                st.code(traceback.format_exc())
 
         with pub_col3:
             if st.button("📘 Facebookに投稿する", use_container_width=True):
@@ -833,6 +838,8 @@ elif page == "✍️ 投稿を生成":
                             st.success(f"✓ Facebook投稿完了！ post_id: {fb_id}")
                         except Exception as e:
                             st.error(f"Facebook投稿エラー: {e}")
+                            with st.expander("詳細エラー情報（コピー可）"):
+                                st.code(traceback.format_exc())
 
 
 # ═══════════════════════════════════════════════════════════════════

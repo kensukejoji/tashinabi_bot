@@ -157,11 +157,51 @@ def generate_post(
 
     try:
         data = json.loads(raw)
-    except json.JSONDecodeError as e:
-        raise ValueError(
-            f"Claude の返答を JSON として解析できませんでした: {e}\n"
-            f"--- 返答内容 ---\n{raw[:500]}"
-        ) from e
+    except json.JSONDecodeError:
+        # JSON内のダブルクォートが原因のエラーを自動修復して再試行
+        try:
+            import re as _re2
+            # 各文字列値内の" を \" にエスケープ（キーと値の境界は保持）
+            def _fix_json_quotes(s: str) -> str:
+                """JSON文字列値内の未エスケープのダブルクォートを修正する"""
+                result = []
+                in_string = False
+                escape_next = False
+                i = 0
+                while i < len(s):
+                    c = s[i]
+                    if escape_next:
+                        result.append(c)
+                        escape_next = False
+                    elif c == '\\':
+                        result.append(c)
+                        escape_next = True
+                    elif c == '"':
+                        if not in_string:
+                            in_string = True
+                            result.append(c)
+                        else:
+                            # 次がコロン・カンマ・改行・スペース・} なら閉じクォート
+                            j = i + 1
+                            while j < len(s) and s[j] in ' \t\r\n':
+                                j += 1
+                            if j >= len(s) or s[j] in ':,}]':
+                                in_string = False
+                                result.append(c)
+                            else:
+                                # 文字列内の未エスケープクォート → エスケープ
+                                result.append('\\"')
+                    else:
+                        result.append(c)
+                    i += 1
+                return ''.join(result)
+            fixed = _fix_json_quotes(raw)
+            data = json.loads(fixed)
+        except Exception as e2:
+            raise ValueError(
+                f"Claude の返答を JSON として解析できませんでした: {e2}\n"
+                f"--- 返答内容 ---\n{raw[:500]}"
+            ) from e2
 
     # 商品とのマッチング
     all_products = repository.list_products(category=category_filter)
