@@ -35,6 +35,7 @@ class GeneratedPost:
     saved_post_id: Optional[int] = None
     youtube_url: Optional[str] = None
     youtube_title: Optional[str] = None
+    news_url: Optional[str] = None
 
     @property
     def x_post_with_url(self) -> str:
@@ -175,6 +176,7 @@ def generate_post(
         matched_product=matched_product,
         youtube_url=youtube_url,
         youtube_title=video_title or None,
+        news_url=news_article.get("url") if news_article else None,
     )
 
     # 生成した投稿をDBに保存

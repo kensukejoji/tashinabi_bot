@@ -8,6 +8,9 @@ import sys
 import traceback
 from pathlib import Path
 
+from dotenv import load_dotenv
+load_dotenv(dotenv_path=Path(__file__).parent / ".env", override=True)
+
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -771,13 +774,20 @@ elif page == "✍️ 投稿を生成":
         with pub_col2:
             if st.button("📷 Instagramに投稿する", use_container_width=True):
                 from src.sns import instagram_client
+                from src.utils.image_resolver import resolve_image_url
                 if not instagram_client.check_credentials():
                     st.error("Instagram APIキーが .env に設定されていません。⚙️ 設定確認 ページを確認してください。")
                 else:
                     with st.spinner("Instagramに投稿中..."):
                         try:
                             ig_text = st.session_state.get("edit_ig_text", result.instagram_post_with_url)
-                            image_url = result.matched_product.image_url if result.matched_product else None
+                            with st.spinner("画像を取得中..."):
+                                image_url = resolve_image_url(
+                                    product_image_url=result.matched_product.image_url if result.matched_product else None,
+                                    youtube_url=result.youtube_url,
+                                    news_url=result.news_url,
+                                    keywords=result.suggested_category or "ソバーキュリアス 健康",
+                                )
                             if image_url:
                                 ig_id = instagram_client.post_image(ig_text, image_url)
                             else:
@@ -795,13 +805,20 @@ elif page == "✍️ 投稿を生成":
         with pub_col3:
             if st.button("📘 Facebookに投稿する", use_container_width=True):
                 from src.sns import facebook_client
+                from src.utils.image_resolver import resolve_image_url
                 if not facebook_client.check_credentials():
                     st.error("Facebook APIキーが .env に設定されていません。⚙️ 設定確認 ページを確認してください。")
                 else:
                     with st.spinner("Facebookページに投稿中..."):
                         try:
                             fb_text = st.session_state.get("edit_ig_text", result.instagram_post_with_url)
-                            image_url = result.matched_product.image_url if result.matched_product else None
+                            with st.spinner("画像を取得中..."):
+                                image_url = resolve_image_url(
+                                    product_image_url=result.matched_product.image_url if result.matched_product else None,
+                                    youtube_url=result.youtube_url,
+                                    news_url=result.news_url,
+                                    keywords=result.suggested_category or "ソバーキュリアス 健康",
+                                )
                             if image_url:
                                 fb_id = facebook_client.post_image(fb_text, image_url)
                             else:
