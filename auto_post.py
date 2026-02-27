@@ -47,7 +47,7 @@ def run() -> None:
 
     log(f"{len(due_items)} 件の投稿を処理します")
 
-    from src.sns import x_client, instagram_client
+    from src.sns import x_client, instagram_client, facebook_client
 
     for item in due_items:
         post = repository.get_post(item.post_id)
@@ -92,6 +92,20 @@ def run() -> None:
             else:
                 errors.append("Instagram: APIキー未設定")
                 log("  [SKIP] Instagram: APIキー未設定")
+
+        # Facebook に投稿
+        if item.platform == "facebook":
+            if facebook_client.check_credentials():
+                try:
+                    fb_id = facebook_client.post_text(post.ig_content)
+                    repository.update_post_sns_ids(post.id, fb_post_id=fb_id)
+                    log(f"  [OK] Facebook投稿完了 post_id={fb_id}")
+                except Exception as e:
+                    errors.append(f"FB: {e}")
+                    log(f"  [ERR] Facebook投稿失敗: {e}")
+            else:
+                errors.append("Facebook: APIキー未設定")
+                log("  [SKIP] Facebook: APIキー未設定")
 
         # ステータス更新
         if errors:

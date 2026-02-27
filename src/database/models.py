@@ -10,7 +10,7 @@ VALID_CATEGORIES = [
     "睡眠デバイス",
 ]
 
-VALID_PLATFORMS = ["x", "instagram"]
+VALID_PLATFORMS = ["x", "instagram", "facebook"]
 
 VALID_PATTERNS = ["news", "tips", "experience", "data"]
 
@@ -45,6 +45,7 @@ class Post:
     id: Optional[int] = None
     tweet_id: Optional[str] = None       # X投稿後に保存
     ig_media_id: Optional[str] = None    # Instagram投稿後に保存
+    fb_post_id: Optional[str] = None     # Facebook投稿後に保存
     posted_at: Optional[str] = None
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
 
@@ -69,7 +70,7 @@ class PostStats:
 class PostQueue:
     """投稿スケジュールキュー"""
     post_id: int
-    platform: str                  # "x" / "instagram" / "both"
+    platform: str                  # "x" / "instagram" / "facebook" / "both"
     scheduled_at: str              # ISO形式: "2025-01-01T09:00:00"
     status: str = "pending"        # "pending" / "posted" / "failed"
     error_msg: Optional[str] = None

@@ -1,5 +1,5 @@
 """
-ソバーキュリアスBot — メインGUIアプリ
+嗜美Bot — メインGUIアプリ
 
 起動方法:
     streamlit run app.py
@@ -23,7 +23,7 @@ from src.generator.prompts import PATTERNS
 # ページ設定（必ず最初に呼ぶ）
 # ─────────────────────────────────────────
 st.set_page_config(
-    page_title="ソバーキュリアスBot",
+    page_title="嗜美Bot",
     page_icon="🍵",
     layout="wide",
 )
@@ -75,7 +75,7 @@ st.markdown("""
 # サイドバー ナビゲーション
 # ─────────────────────────────────────────
 st.sidebar.image("https://em-content.zobj.net/source/twitter/376/teacup-without-handle_1f375.png", width=60)
-st.sidebar.title("ソバーキュリアスBot")
+st.sidebar.title("嗜美Bot")
 st.sidebar.markdown("---")
 
 PAGE_NAMES = [
@@ -105,7 +105,7 @@ def load_stats() -> pd.DataFrame:
         return pd.DataFrame()
     df = pd.DataFrame(rows)
     df["pattern_label"] = df["pattern"].map(PATTERN_LABELS).fillna(df["pattern"])
-    df["platform_label"] = df["platform"].map({"x": "X", "instagram": "Instagram"}).fillna(df["platform"])
+    df["platform_label"] = df["platform"].map({"x": "X", "instagram": "Instagram", "facebook": "Facebook"}).fillna(df["platform"])
     df["recorded_at"] = pd.to_datetime(df["recorded_at"])
     df["hour"] = df["recorded_at"].dt.hour
     df["engagement"] = df["likes"] + df["reposts"] + df["comments"]
@@ -342,7 +342,7 @@ elif page == "📰 今日のニュース":
             post_date = st.date_input("投稿日", value=today, key="bulk_date")
         with sch_col2:
             platform_choice = st.selectbox(
-                "投稿先", ["X（Twitter）", "Instagram", "両方"], key="bulk_platform"
+                "投稿先", ["X（Twitter）", "Instagram", "Facebook", "両方"], key="bulk_platform"
             )
         with sch_col3:
             time_slots = ["朝 09:00", "昼 12:00", "夕 18:00", "夜 21:00", "カスタム"]
@@ -372,42 +372,107 @@ elif page == "📰 今日のニュース":
                 h = (base_times[0].hour + idx * 3) % 24
                 custom_times.append(dt.time(h, 0))
 
-        platform_key = {"X（Twitter）": "x", "Instagram": "instagram", "両方": "both"}[platform_choice]
+        platform_key = {"X（Twitter）": "x", "Instagram": "instagram", "Facebook": "facebook", "両方": "both"}[platform_choice]
 
-        if st.button("🚀 選択した記事から投稿を一括生成してスケジュール登録", type="primary", use_container_width=True):
+        # ── STEP 1: 生成ボタン ───────────────────────────────────────
+        if st.button("✍️ 投稿文を生成してプレビュー", type="primary", use_container_width=True):
             from src.generator.post_generator import generate_post
 
             progress = st.progress(0)
-            results = []
+            drafts = []
             for idx, article in enumerate(top_articles):
                 progress.progress((idx + 1) / len(top_articles))
                 with st.spinner(f"({idx+1}/{len(top_articles)}) 「{article['title'][:30]}…」の投稿文を生成中..."):
                     try:
                         result = generate_post(news_article=article)
                         scheduled_dt = dt.datetime.combine(post_date, custom_times[idx])
-                        queue_item = repository.add_to_queue(
-                            PostQueue(
-                                post_id=result.saved_post_id,
-                                platform=platform_key,
-                                scheduled_at=scheduled_dt.isoformat(),
-                            )
-                        )
-                        results.append((article["title"], result, scheduled_dt))
-                        st.success(
-                            f"✓ 記事{idx+1}: {article['title'][:40]}… "
-                            f"→ {scheduled_dt.strftime('%m/%d %H:%M')} にスケジュール登録"
-                        )
+                        drafts.append({
+                            "article_title": article["title"],
+                            "scheduled_dt": scheduled_dt,
+                            "platform": platform_key,
+                            "post_id": result.saved_post_id,
+                            "x_text": result.x_post_with_url,
+                            "ig_text": result.instagram_post_with_url,
+                        })
+                        # テキストエリアの初期値をsession_stateにセット
+                        st.session_state[f"news_x_{idx}"] = result.x_post_with_url
+                        st.session_state[f"news_ig_{idx}"] = result.instagram_post_with_url
                     except Exception as e:
                         st.error(f"記事{idx+1} エラー: {e}")
                         with st.expander("詳細エラー情報"):
                             st.code(traceback.format_exc())
 
             progress.empty()
+            st.session_state["news_drafts"] = drafts
             st.cache_data.clear()
-            if results:
-                st.balloons()
-                st.success(f"✅ {len(results)} 件の投稿をスケジュール登録しました！「📅 投稿スケジュール」ページで確認できます。")
-                st.session_state["last_result"] = results[-1][1]
+            if drafts:
+                st.success(f"✓ {len(drafts)} 件の投稿文を生成しました。下で確認・編集してからスケジュール登録してください。")
+
+        # ── STEP 2: プレビュー・編集・スケジュール登録 ───────────────
+        drafts = st.session_state.get("news_drafts", [])
+        if drafts:
+            st.markdown("---")
+            st.markdown("### 📝 生成された投稿文（編集可）")
+
+            for i, draft in enumerate(drafts):
+                with st.expander(
+                    f"記事{i+1}: {draft['article_title'][:50]}…  "
+                    f"📅 {draft['scheduled_dt'].strftime('%m/%d %H:%M')}",
+                    expanded=True,
+                ):
+                    tab_x, tab_ig = st.tabs(["🐦 X投稿文", "📷 Instagram投稿文"])
+                    with tab_x:
+                        st.text_area(
+                            "X", key=f"news_x_{i}", height=160,
+                            label_visibility="collapsed",
+                        )
+                        x_len = len(st.session_state.get(f"news_x_{i}", ""))
+                        color = "green" if x_len <= 140 else "red"
+                        st.markdown(
+                            f"<span style='color:{color}'>文字数: {x_len} / 140</span>",
+                            unsafe_allow_html=True,
+                        )
+                    with tab_ig:
+                        st.text_area(
+                            "IG", key=f"news_ig_{i}", height=200,
+                            label_visibility="collapsed",
+                        )
+
+            st.markdown("---")
+            col_cancel, col_schedule = st.columns([1, 3])
+            with col_cancel:
+                if st.button("✖️ キャンセル", use_container_width=True):
+                    st.session_state.pop("news_drafts", None)
+                    st.rerun()
+            with col_schedule:
+                if st.button("📅 スケジュール登録", type="primary", use_container_width=True):
+                    success_count = 0
+                    for i, draft in enumerate(drafts):
+                        try:
+                            edited_x  = st.session_state.get(f"news_x_{i}", draft["x_text"])
+                            edited_ig = st.session_state.get(f"news_ig_{i}", draft["ig_text"])
+                            # 編集内容をDBに反映
+                            if draft["post_id"]:
+                                repository.update_post_content(draft["post_id"], edited_x, edited_ig)
+                            # キューに追加
+                            repository.add_to_queue(PostQueue(
+                                post_id=draft["post_id"],
+                                platform=draft["platform"],
+                                scheduled_at=draft["scheduled_dt"].isoformat(),
+                            ))
+                            success_count += 1
+                            st.success(
+                                f"✓ 記事{i+1}: {draft['article_title'][:35]}… "
+                                f"→ {draft['scheduled_dt'].strftime('%m/%d %H:%M')} にスケジュール登録"
+                            )
+                        except Exception as e:
+                            st.error(f"記事{i+1} スケジュール登録エラー: {e}")
+
+                    if success_count > 0:
+                        st.session_state.pop("news_drafts", None)
+                        st.cache_data.clear()
+                        st.balloons()
+                        st.success(f"✅ {success_count} 件の投稿をスケジュール登録しました！「📅 投稿スケジュール」ページで確認できます。")
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -443,7 +508,7 @@ elif page == "📅 投稿スケジュール":
     st.markdown("---")
 
     STATUS_ICONS = {"pending": "⏳", "posted": "✅", "failed": "❌"}
-    PLATFORM_LABELS = {"x": "🐦 X", "instagram": "📷 IG", "both": "🐦📷 両方"}
+    PLATFORM_LABELS = {"x": "🐦 X", "instagram": "📷 IG", "facebook": "📘 FB", "both": "🐦📷 両方"}
 
     now_iso = dt.datetime.now().isoformat()
 
@@ -461,9 +526,21 @@ elif page == "📅 投稿スケジュール":
         ):
             tab_x, tab_ig = st.tabs(["🐦 X投稿文", "📷 Instagram投稿文"])
             with tab_x:
-                st.text_area("X", row["x_content"], height=100, key=f"sq_x_{row['queue_id']}", disabled=True, label_visibility="collapsed")
+                sq_x_key = f"sq_x_{row['queue_id']}"
+                if sq_x_key not in st.session_state:
+                    st.session_state[sq_x_key] = row["x_content"]
+                st.text_area("X", key=sq_x_key, height=120, label_visibility="collapsed",
+                             disabled=(row["status"] == "posted"))
+                if row["status"] != "posted":
+                    x_len = len(st.session_state.get(sq_x_key, ""))
+                    color = "green" if x_len <= 140 else "red"
+                    st.markdown(f"<span style='color:{color}'>文字数: {x_len} / 140</span>", unsafe_allow_html=True)
             with tab_ig:
-                st.text_area("IG", row["ig_content"], height=150, key=f"sq_ig_{row['queue_id']}", disabled=True, label_visibility="collapsed")
+                sq_ig_key = f"sq_ig_{row['queue_id']}"
+                if sq_ig_key not in st.session_state:
+                    st.session_state[sq_ig_key] = row["ig_content"]
+                st.text_area("IG", key=sq_ig_key, height=160, label_visibility="collapsed",
+                             disabled=(row["status"] == "posted"))
 
             meta1, meta2, meta3 = st.columns(3)
             meta1.caption(f"スケジュール: {scheduled}")
@@ -472,12 +549,22 @@ elif page == "📅 投稿スケジュール":
             if row.get("error_msg"):
                 st.warning(f"エラー: {row['error_msg']}")
 
+            # 編集保存ボタン（pending/failedのみ）
+            if row["status"] != "posted":
+                if st.button("💾 編集を保存", key=f"save_{row['queue_id']}"):
+                    repository.update_post_content(
+                        row["post_id"],
+                        st.session_state.get(f"sq_x_{row['queue_id']}", row["x_content"]),
+                        st.session_state.get(f"sq_ig_{row['queue_id']}", row["ig_content"]),
+                    )
+                    st.success("✓ 保存しました")
+
             btn1, btn2, btn3 = st.columns(3)
 
             # 今すぐ投稿
             if row["status"] in ("pending", "failed"):
                 if btn1.button("▶️ 今すぐ投稿", key=f"now_{row['queue_id']}"):
-                    from src.sns import x_client, instagram_client
+                    from src.sns import x_client, instagram_client, facebook_client
                     post = repository.get_post(row["post_id"])
                     errors = []
                     if row["platform"] in ("x", "both"):
@@ -492,6 +579,12 @@ elif page == "📅 投稿スケジュール":
                             repository.update_post_sns_ids(post.id, ig_media_id=igid)
                         except Exception as e:
                             errors.append(f"IG: {e}")
+                    if row["platform"] == "facebook":
+                        try:
+                            fbid = facebook_client.post_text(post.ig_content)
+                            repository.update_post_sns_ids(post.id, fb_post_id=fbid)
+                        except Exception as e:
+                            errors.append(f"FB: {e}")
                     if errors:
                         repository.update_queue_status(row["queue_id"], "failed", error_msg="; ".join(errors))
                         st.error("; ".join(errors))
@@ -598,19 +691,35 @@ elif page == "✍️ 投稿を生成":
         st.markdown("---")
         st.subheader(f"生成結果 — パターン: {PATTERN_LABELS.get(result.pattern, result.pattern)}")
 
+        # 新しい生成結果の場合のみテキストエリアの初期値をリセット
+        if st.session_state.get("_last_result_id") != result.saved_post_id:
+            st.session_state["edit_x_text"] = result.x_post_with_url
+            st.session_state["edit_ig_text"] = result.instagram_post_with_url
+            st.session_state["_last_result_id"] = result.saved_post_id
+
         col_x, col_ig = st.columns(2)
 
         with col_x:
-            st.markdown("#### 🐦 X（Twitter）投稿文")
-            st.markdown(f'<div class="post-box">{result.x_post_with_url}</div>', unsafe_allow_html=True)
-            x_len = len(result.x_post_with_url)
+            st.markdown("#### 🐦 X（Twitter）投稿文　✏️ 編集可")
+            edited_x = st.text_area(
+                "X投稿文",
+                key="edit_x_text",
+                height=220,
+                label_visibility="collapsed",
+            )
+            x_len = len(edited_x)
             color = "green" if x_len <= 140 else "red"
             st.markdown(f"<span style='color:{color}'>文字数: {x_len} / 140</span>", unsafe_allow_html=True)
 
         with col_ig:
-            st.markdown("#### 📷 Instagram 投稿文")
-            st.markdown(f'<div class="post-box">{result.instagram_post_with_url}</div>', unsafe_allow_html=True)
-            st.caption(f"文字数: {len(result.instagram_post_with_url)}")
+            st.markdown("#### 📷 Instagram 投稿文　✏️ 編集可")
+            edited_ig = st.text_area(
+                "Instagram投稿文",
+                key="edit_ig_text",
+                height=220,
+                label_visibility="collapsed",
+            )
+            st.caption(f"文字数: {len(edited_ig)}")
 
         if result.youtube_url:
             title_text = f"「{result.youtube_title}」" if result.youtube_title else ""
@@ -624,11 +733,22 @@ elif page == "✍️ 投稿を生成":
         if result.saved_post_id:
             st.caption(f"DB保存済み: post_id = {result.saved_post_id}")
 
+        # 編集内容をDBに保存するボタン
+        if st.button("💾 編集内容をDBに保存", use_container_width=False):
+            if result.saved_post_id:
+                repository.update_post_content(
+                    result.saved_post_id,
+                    st.session_state.get("edit_x_text", result.x_post_with_url),
+                    st.session_state.get("edit_ig_text", result.instagram_post_with_url),
+                )
+                st.success("✓ 編集内容を保存しました")
+
         # SNS投稿ボタン
         st.markdown("---")
         st.subheader("📤 SNSに投稿する")
+        st.caption("上で編集したテキストがそのまま投稿されます。")
 
-        pub_col1, pub_col2 = st.columns(2)
+        pub_col1, pub_col2, pub_col3 = st.columns(3)
 
         with pub_col1:
             if st.button("🐦 Xに投稿する", use_container_width=True):
@@ -638,9 +758,12 @@ elif page == "✍️ 投稿を生成":
                 else:
                     with st.spinner("Xに投稿中..."):
                         try:
-                            tweet_id = x_client.post_tweet(result.x_post_with_url)
+                            x_text = st.session_state.get("edit_x_text", result.x_post_with_url)
+                            tweet_id = x_client.post_tweet(x_text)
                             if result.saved_post_id:
                                 repository.update_post_sns_ids(result.saved_post_id, tweet_id=tweet_id)
+                                repository.update_post_content(result.saved_post_id, x_text,
+                                    st.session_state.get("edit_ig_text", result.instagram_post_with_url))
                             st.success(f"✓ X投稿完了！ tweet_id: {tweet_id}")
                         except Exception as e:
                             st.error(f"X投稿エラー: {e}")
@@ -653,18 +776,41 @@ elif page == "✍️ 投稿を生成":
                 else:
                     with st.spinner("Instagramに投稿中..."):
                         try:
+                            ig_text = st.session_state.get("edit_ig_text", result.instagram_post_with_url)
                             image_url = result.matched_product.image_url if result.matched_product else None
                             if image_url:
-                                ig_id = instagram_client.post_image(result.instagram_post_with_url, image_url)
+                                ig_id = instagram_client.post_image(ig_text, image_url)
                             else:
-                                ig_id = instagram_client.post_text_only(result.instagram_post_with_url)
+                                ig_id = instagram_client.post_text_only(ig_text)
                             if result.saved_post_id:
                                 repository.update_post_sns_ids(result.saved_post_id, ig_media_id=ig_id)
+                                repository.update_post_content(result.saved_post_id,
+                                    st.session_state.get("edit_x_text", result.x_post_with_url), ig_text)
                             st.success(f"✓ Instagram投稿完了！ media_id: {ig_id}")
                         except NotImplementedError as e:
                             st.warning(str(e))
                         except Exception as e:
                             st.error(f"Instagram投稿エラー: {e}")
+
+        with pub_col3:
+            if st.button("📘 Facebookに投稿する", use_container_width=True):
+                from src.sns import facebook_client
+                if not facebook_client.check_credentials():
+                    st.error("Facebook APIキーが .env に設定されていません。⚙️ 設定確認 ページを確認してください。")
+                else:
+                    with st.spinner("Facebookページに投稿中..."):
+                        try:
+                            fb_text = st.session_state.get("edit_ig_text", result.instagram_post_with_url)
+                            image_url = result.matched_product.image_url if result.matched_product else None
+                            if image_url:
+                                fb_id = facebook_client.post_image(fb_text, image_url)
+                            else:
+                                fb_id = facebook_client.post_text(fb_text)
+                            if result.saved_post_id:
+                                repository.update_post_sns_ids(result.saved_post_id, fb_post_id=fb_id)
+                            st.success(f"✓ Facebook投稿完了！ post_id: {fb_id}")
+                        except Exception as e:
+                            st.error(f"Facebook投稿エラー: {e}")
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -714,6 +860,8 @@ elif page == "📋 投稿一覧":
             meta_col1.caption(f"生成日時: {post.created_at[:16].replace('T', ' ')}")
             meta_col2.caption(f"tweet_id: {post.tweet_id or '未投稿'}")
             meta_col3.caption(f"ig_media_id: {post.ig_media_id or '未投稿'}")
+            if post.fb_post_id:
+                st.caption(f"fb_post_id: {post.fb_post_id}")
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -900,8 +1048,8 @@ elif page == "📈 エンゲージメント入力":
         selected_label = st.selectbox("投稿を選択", list(post_options.keys()))
         selected_post_id = post_options[selected_label]
 
-        platform = st.radio("プラットフォーム", ["X（Twitter）", "Instagram"], horizontal=True)
-        platform_key = "x" if platform == "X（Twitter）" else "instagram"
+        platform = st.radio("プラットフォーム", ["X（Twitter）", "Instagram", "Facebook"], horizontal=True)
+        platform_key = {"X（Twitter）": "x", "Instagram": "instagram", "Facebook": "facebook"}[platform]
 
         with st.form("stats_form", clear_on_submit=True):
             s1, s2, s3, s4 = st.columns(4)
@@ -1041,6 +1189,14 @@ elif page == "⚙️ 設定確認":
         st.markdown(f"{k}: **{status_badge(check_key(k))}**")
 
     st.markdown("---")
+    st.subheader("Facebook Graph API（ページ投稿）")
+    fb_keys = ["FB_PAGE_ID", "FB_PAGE_ACCESS_TOKEN"]
+    for k in fb_keys:
+        st.markdown(f"{k}: **{status_badge(check_key(k))}**")
+    if not check_key("FB_PAGE_ID") or not check_key("FB_PAGE_ACCESS_TOKEN"):
+        st.warning("Facebookページ投稿を使うには FB_PAGE_ID と FB_PAGE_ACCESS_TOKEN を .env に設定してください。")
+
+    st.markdown("---")
     st.subheader("Amazonアソシエイト")
     amz_keys = ["AMAZON_ASSOCIATE_TAG", "AMAZON_CLIENT_ID", "AMAZON_CLIENT_SECRET"]
     for k in amz_keys:
@@ -1083,6 +1239,17 @@ open -a TextEdit .env""", language="bash")
 1. [Meta for Developers](https://developers.facebook.com/) → あなたのアプリ
 2. `IG_USER_ID`: InstagramのビジネスアカウントID（数字）
 3. `IG_ACCESS_TOKEN`: Long-lived Access Token（有効期限約60日）
+        """)
+    with st.expander("Facebook Graph APIキーの取得・設定"):
+        st.markdown("""
+1. [Facebook](https://www.facebook.com) で **「嗜美」ページを作成**
+2. [Meta for Developers](https://developers.facebook.com/) でアプリを作成（または既存のInstagramアプリを流用）
+3. **Graph API Explorer** を開く → ページを選択 → Generate Access Token
+4. 権限: `pages_manage_posts`, `pages_read_engagement` を付与
+5. アクセストークンをツール上で **Long-lived token（長期トークン）に変換**（有効期限60日）
+6. `.env` に以下を設定:
+   - `FB_PAGE_ID`: FacebookページのID（ページURL または ページ設定で確認）
+   - `FB_PAGE_ACCESS_TOKEN`: 上で取得したページアクセストークン
         """)
     with st.expander("Claude AIのAPIキーの取得・設定"):
         st.markdown("""

@@ -135,21 +135,32 @@ def generate_post(
     client = anthropic.Anthropic(api_key=api_key)
     message = client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=1024,
+        max_tokens=2048,
         system=system_prompt,
         messages=[{"role": "user", "content": user_prompt}],
     )
 
     raw = message.content[0].text.strip()
 
-    # JSONブロックのみ抽出（```json ... ``` 形式にも対応）
-    if "```" in raw:
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-        raw = raw.strip()
+    # JSONブロックのみ抽出（複数パターンに対応）
+    # 1) ```json ... ``` または ``` ... ``` 形式
+    import re as _re
+    code_match = _re.search(r'```(?:json)?\s*([\s\S]*?)```', raw)
+    if code_match:
+        raw = code_match.group(1).strip()
+    else:
+        # 2) { ... } のJSONオブジェクト部分だけ取り出す
+        obj_match = _re.search(r'\{[\s\S]*\}', raw)
+        if obj_match:
+            raw = obj_match.group(0).strip()
 
-    data = json.loads(raw)
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise ValueError(
+            f"Claude の返答を JSON として解析できませんでした: {e}\n"
+            f"--- 返答内容 ---\n{raw[:500]}"
+        ) from e
 
     # 商品とのマッチング
     all_products = repository.list_products(category=category_filter)

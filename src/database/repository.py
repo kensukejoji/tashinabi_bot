@@ -81,6 +81,7 @@ def init_db() -> None:
             "ALTER TABLE products ADD COLUMN short_code TEXT",
             "ALTER TABLE posts ADD COLUMN tweet_id TEXT",
             "ALTER TABLE posts ADD COLUMN ig_media_id TEXT",
+            "ALTER TABLE posts ADD COLUMN fb_post_id TEXT",
         ]:
             try:
                 conn.execute(alter_sql)
@@ -220,14 +221,16 @@ def delete_product(product_id: int) -> bool:
 # ─────────────────────────────────────────
 
 def _row_to_post(row: sqlite3.Row) -> Post:
+    keys = row.keys()
     return Post(
         id=row["id"],
         product_id=row["product_id"],
         pattern=row["pattern"],
         x_content=row["x_content"],
         ig_content=row["ig_content"],
-        tweet_id=row["tweet_id"] if "tweet_id" in row.keys() else None,
-        ig_media_id=row["ig_media_id"] if "ig_media_id" in row.keys() else None,
+        tweet_id=row["tweet_id"] if "tweet_id" in keys else None,
+        ig_media_id=row["ig_media_id"] if "ig_media_id" in keys else None,
+        fb_post_id=row["fb_post_id"] if "fb_post_id" in keys else None,
         posted_at=row["posted_at"],
         created_at=row["created_at"],
     )
@@ -239,11 +242,11 @@ def save_post(post: Post) -> Post:
         cursor = conn.execute(
             """
             INSERT INTO posts
-              (product_id, pattern, x_content, ig_content, tweet_id, ig_media_id, posted_at, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+              (product_id, pattern, x_content, ig_content, tweet_id, ig_media_id, fb_post_id, posted_at, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (post.product_id, post.pattern, post.x_content, post.ig_content,
-             post.tweet_id, post.ig_media_id, post.posted_at, now),
+             post.tweet_id, post.ig_media_id, post.fb_post_id, post.posted_at, now),
         )
         conn.commit()
         post.id = cursor.lastrowid
@@ -255,9 +258,10 @@ def update_post_sns_ids(
     post_id: int,
     tweet_id: Optional[str] = None,
     ig_media_id: Optional[str] = None,
+    fb_post_id: Optional[str] = None,
     posted_at: Optional[str] = None,
 ) -> None:
-    """X/Instagram投稿後のIDとposted_atを保存"""
+    """X/Instagram/Facebook投稿後のIDとposted_atを保存"""
     now = posted_at or datetime.now().isoformat()
     with get_connection() as conn:
         conn.execute(
@@ -265,10 +269,21 @@ def update_post_sns_ids(
             UPDATE posts
             SET tweet_id=COALESCE(?, tweet_id),
                 ig_media_id=COALESCE(?, ig_media_id),
+                fb_post_id=COALESCE(?, fb_post_id),
                 posted_at=?
             WHERE id=?
             """,
-            (tweet_id, ig_media_id, now, post_id),
+            (tweet_id, ig_media_id, fb_post_id, now, post_id),
+        )
+        conn.commit()
+
+
+def update_post_content(post_id: int, x_content: str, ig_content: str) -> None:
+    """投稿文を更新（編集後の内容をDBに反映）"""
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE posts SET x_content=?, ig_content=? WHERE id=?",
+            (x_content, ig_content, post_id),
         )
         conn.commit()
 
